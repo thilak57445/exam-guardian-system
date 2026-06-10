@@ -10,17 +10,21 @@ import { useToast } from "@/hooks/use-toast";
 const Login = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [localError, setLocalError] = useState("");
   const { login, isLoading } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setLocalError("");
     try {
       await login(email, password);
       navigate("/dashboard");
-    } catch {
-      toast({ title: "Login Failed", description: "Invalid email or password.", variant: "destructive" });
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : "Invalid email or password.";
+      setLocalError(errorMessage);
+      toast({ title: "Login Failed", description: errorMessage, variant: "destructive" });
     }
   };
 

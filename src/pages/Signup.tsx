@@ -12,17 +12,21 @@ const Signup = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [role, setRole] = useState<UserRole>("student");
+  const [localError, setLocalError] = useState("");
   const { signup, isLoading } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setLocalError("");
     try {
       await signup(name, email, password, role);
       navigate("/dashboard");
-    } catch {
-      toast({ title: "Signup Failed", description: "Email may already exist.", variant: "destructive" });
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : "Email may already exist.";
+      setLocalError(errorMessage);
+      toast({ title: "Signup Failed", description: errorMessage, variant: "destructive" });
     }
   };
 

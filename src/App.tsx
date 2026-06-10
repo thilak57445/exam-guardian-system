@@ -19,7 +19,19 @@ const queryClient = new QueryClient();
 
 // Protected route wrapper
 const ProtectedRoute = ({ children, role }: { children: React.ReactNode; role?: string }) => {
-  const { user } = useAuth();
+  const { user, isInitializing } = useAuth();
+  
+  if (isInitializing) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-accent"></div>
+          <p className="mt-4 text-muted-foreground">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+  
   if (!user) return <Navigate to="/login" />;
   if (role && user.role !== role) return <Navigate to="/dashboard" />;
   return <>{children}</>;
@@ -27,7 +39,19 @@ const ProtectedRoute = ({ children, role }: { children: React.ReactNode; role?: 
 
 // Redirect if already logged in
 const PublicRoute = ({ children }: { children: React.ReactNode }) => {
-  const { user } = useAuth();
+  const { user, isInitializing } = useAuth();
+  
+  if (isInitializing) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-accent"></div>
+          <p className="mt-4 text-muted-foreground">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+  
   if (user) return <Navigate to="/dashboard" />;
   return <>{children}</>;
 };

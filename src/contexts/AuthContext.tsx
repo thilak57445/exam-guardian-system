@@ -1,12 +1,21 @@
-import React, { createContext, useContext, useState, useCallback } from "react";
+import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import {
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  signOut,
+  onAuthStateChanged,
+  User as FirebaseUser,
+} from "firebase/auth";
+import { auth, db } from "@/firebase";
+import { setDoc, doc, getDoc } from "firebase/firestore";
 
 // Types for our auth system
 export type UserRole = "teacher" | "student";
 
 export interface User {
   id: string;
-  name: string;
   email: string;
+  name: string;
   role: UserRole;
 }
 
@@ -14,56 +23,147 @@ interface AuthContextType {
   user: User | null;
   login: (email: string, password: string) => Promise<void>;
   signup: (name: string, email: string, password: string, role: UserRole) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
   isLoading: boolean;
+  isInitializing: boolean;
+  error: string | null;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
-// Simple in-memory user store for demo purposes
-const DEMO_USERS: (User & { password: string })[] = [
-  { id: "t1", name: "Dr. Smith", email: "teacher@exam.com", password: "password", role: "teacher" },
-  { id: "s1", name: "John Doe", email: "student@exam.com", password: "password", role: "student" },
-  { id: "s2", name: "Jane Wilson", email: "jane@exam.com", password: "password", role: "student" },
-];
-
-export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(() => {
-    const saved = localStorage.getItem("exam_user");
-    return saved ? JSON.parse(saved) : null;
-  });
+export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isInitializing, setIsInitializing] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const login = useCallback(async (email: string, password: string) => {
+  // Listen for authentication state changes
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser: FirebaseUser | null) => {
+      try {
+        if (firebaseUser) {
+          // User is logged in, fetch their profile from Firestore
+          const userDocRef = doc(db, "users", firebaseUser.uid);
+          const userDocSnap = await getDoc(userDocRef);
+
+          if (userDocSnap.exists()) {
+            const userData = userDocSnap.data();
+            setUser({
+              id: firebaseUser.uid,
+              email: firebaseUser.email || "",
+              name: userData.name || "",
+              role: userData.role || "student",
+            });
+          } else {
+            // Fallback if user doc doesn't exist
+            setUser({
+              id: firebaseUser.uid,
+              email: firebaseUser.email || "",
+              name: firebaseUser.displayName || "",
+              role: "student",
+            });
+          }
+        } else {
+          // User is logged out
+          setUser(null);
+        }
+      } catch (err) {
+        console.error("Error restoring user session:", err);
+        setError(err instanceof Error ? err.message : "Session restoration failed");
+      } finally {
+        setIsInitializing(false);
+      }
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  const login = async (email: string, password: string) => {
     setIsLoading(true);
-    // Simulate API delay
-    await new Promise((r) => setTimeout(r, 800));
-    const found = DEMO_USERS.find((u) => u.email === email && u.password === password);
-    if (!found) throw new Error("Invalid credentials");
-    const { password: _, ...userData } = found;
-    setUser(userData);
-    localStorage.setItem("exam_user", JSON.stringify(userData));
-    setIsLoading(false);
-  }, []);
+    setError(null);
+    try {
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      
+      // Fetch user profile from Firestore
+      const userDocRef = doc(db, "users", userCredential.user.uid);
+      const userDocSnap = await getDoc(userDocRef);
 
-  const signup = useCallback(async (name: string, email: string, password: string, role: UserRole) => {
+      if (userDocSnap.exists()) {
+        const userData = userDocSnap.data();
+        setUser({
+          id: userCredential.user.uid,
+          email: userCredential.user.email || "",
+          name: userData.name || "",
+          role: userData.role || "student",
+        });
+      }
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : "Login failed";
+      setError(errorMessage);
+      throw err;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const signup = async (name: string, email: string, password: string, role: UserRole) => {
     setIsLoading(true);
-    await new Promise((r) => setTimeout(r, 800));
-    if (DEMO_USERS.find((u) => u.email === email)) throw new Error("Email already exists");
-    const newUser: User = { id: `u${Date.now()}`, name, email, role };
-    DEMO_USERS.push({ ...newUser, password });
-    setUser(newUser);
-    localStorage.setItem("exam_user", JSON.stringify(newUser));
-    setIsLoading(false);
-  }, []);
+    setError(null);
+    try {
+      // Create user in Firebase Authentication
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
 
-  const logout = useCallback(() => {
-    setUser(null);
-    localStorage.removeItem("exam_user");
-  }, []);
+      // Store user profile in Firestore
+      const userDocRef = doc(db, "users", userCredential.user.uid);
+      await setDoc(userDocRef, {
+        name,
+        email,
+        role,
+        createdAt: new Date().toISOString(),
+      });
+
+      setUser({
+        id: userCredential.user.uid,
+        email,
+        name,
+        role,
+      });
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : "Signup failed";
+      setError(errorMessage);
+      throw err;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const logout = async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      await signOut(auth);
+      setUser(null);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : "Logout failed";
+      setError(errorMessage);
+      throw err;
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   return (
-    <AuthContext.Provider value={{ user, login, signup, logout, isLoading }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        login,
+        signup,
+        logout,
+        isLoading,
+        isInitializing,
+        error,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );
