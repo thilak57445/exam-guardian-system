@@ -10,7 +10,7 @@ const TeacherDashboard = () => {
   const { exams, results } = useExams();
   const navigate = useNavigate();
 
-  const myExams = exams.filter((e) => e.createdBy === user?.id);
+  const myExams = exams.filter((e) => e.teacherId === user?.id);
   const totalStudents = new Set(results.filter((r) => myExams.some((e) => e.id === r.examId)).map((r) => r.studentId)).size;
   const totalSubmissions = results.filter((r) => myExams.some((e) => e.id === r.examId)).length;
 

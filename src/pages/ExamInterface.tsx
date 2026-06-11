@@ -100,7 +100,7 @@ const ExamInterface = () => {
     document.documentElement.requestFullscreen?.().catch(() => {});
   };
 
-  const handleSubmit = useCallback(() => {
+  const handleSubmit = useCallback(async () => {
     if (!exam || !user || submitted) return;
     setSubmitted(true);
 
@@ -120,20 +120,30 @@ const ExamInterface = () => {
       }
     });
 
-    submitResult({
-      examId: exam.id, studentId: user.id, studentName: user.name,
-      answers, score, totalPoints, submittedAt: new Date().toISOString(), tabSwitches,
-    });
+    try {
+      await submitResult({
+        examId: exam.id, studentId: user.id, studentName: user.name,
+        answers, score, totalPoints, submittedAt: new Date().toISOString(), tabSwitches,
+      });
 
-    // Exit fullscreen
-    document.exitFullscreen?.().catch(() => {});
-    // Stop webcam
-    if (videoRef.current?.srcObject) {
-      (videoRef.current.srcObject as MediaStream).getTracks().forEach((t) => t.stop());
+      // Exit fullscreen
+      document.exitFullscreen?.().catch(() => {});
+      // Stop webcam
+      if (videoRef.current?.srcObject) {
+        (videoRef.current.srcObject as MediaStream).getTracks().forEach((t) => t.stop());
+      }
+
+      toast({ title: "Exam Submitted!", description: `Score: ${score}/${totalPoints}` });
+    } catch (error) {
+      console.error("Error submitting exam:", error);
+      toast({
+        title: "Error",
+        description: "Failed to submit exam. Please try again.",
+        variant: "destructive",
+      });
+      setSubmitted(false);
     }
-
-    toast({ title: "Exam Submitted!", description: `Score: ${score}/${totalPoints}` });
-  }, [exam, user, answers, tabSwitches, submitted]);
+  }, [exam, user, answers, tabSwitches, submitted, submitResult]);
 
   if (!exam) return <div className="min-h-screen flex items-center justify-center"><p>Exam not found.</p></div>;
 

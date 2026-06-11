@@ -1,4 +1,16 @@
-import React, { createContext, useContext, useState, useCallback } from "react";
+import React, { createContext, useContext, useState, useCallback, useEffect } from "react";
+import { db } from "@/firebase";
+import {
+  collection,
+  addDoc,
+  query,
+  where,
+  orderBy,
+  onSnapshot,
+  getDoc,
+  doc,
+  QueryConstraint,
+} from "firebase/firestore";
 
 export interface MCQOption {
   id: string;
@@ -22,8 +34,10 @@ export interface Exam {
   startTime: string;
   endTime: string;
   questions: Question[];
-  createdBy: string;
+  teacherId: string;
+  teacherName: string;
   createdAt: string;
+  status?: string;
 }
 
 export interface ExamResult {
@@ -38,98 +52,143 @@ export interface ExamResult {
   tabSwitches: number;
 }
 
-// Sample data
-const SAMPLE_QUESTIONS: Question[] = [
-  {
-    id: "q1", type: "mcq", text: "What is the time complexity of binary search?",
-    options: [
-      { id: "a", text: "O(n)" }, { id: "b", text: "O(log n)" },
-      { id: "c", text: "O(n²)" }, { id: "d", text: "O(1)" },
-    ],
-    correctAnswer: "b", points: 5,
-  },
-  {
-    id: "q2", type: "mcq", text: "Which data structure uses FIFO ordering?",
-    options: [
-      { id: "a", text: "Stack" }, { id: "b", text: "Queue" },
-      { id: "c", text: "Tree" }, { id: "d", text: "Graph" },
-    ],
-    correctAnswer: "b", points: 5,
-  },
-  {
-    id: "q3", type: "short", text: "Explain the concept of polymorphism in OOP.",
-    correctAnswer: "polymorphism", points: 10,
-  },
-];
-
-const INITIAL_EXAMS: Exam[] = [
-  {
-    id: "e1", title: "Data Structures & Algorithms", description: "Mid-semester examination covering arrays, linked lists, trees, and sorting algorithms.",
-    duration: 30, startTime: "2026-03-29T09:00", endTime: "2026-04-30T23:59",
-    questions: SAMPLE_QUESTIONS, createdBy: "t1", createdAt: "2026-03-28T10:00",
-  },
-  {
-    id: "e2", title: "Database Management Systems", description: "Final exam on SQL, normalization, and ER diagrams.",
-    duration: 45, startTime: "2026-03-29T09:00", endTime: "2026-04-30T23:59",
-    questions: [
-      {
-        id: "q4", type: "mcq", text: "What does SQL stand for?",
-        options: [
-          { id: "a", text: "Structured Query Language" }, { id: "b", text: "Simple Query Language" },
-          { id: "c", text: "Standard Query Logic" }, { id: "d", text: "System Query Language" },
-        ],
-        correctAnswer: "a", points: 5,
-      },
-      {
-        id: "q5", type: "short", text: "What is normalization in databases?",
-        correctAnswer: "normalization", points: 10,
-      },
-    ],
-    createdBy: "t1", createdAt: "2026-03-27T14:00",
-  },
-];
-
-const INITIAL_RESULTS: ExamResult[] = [
-  {
-    id: "r1", examId: "e1", studentId: "s1", studentName: "John Doe",
-    answers: { q1: "b", q2: "b", q3: "Polymorphism allows objects to take many forms" },
-    score: 20, totalPoints: 20, submittedAt: "2026-03-29T10:25", tabSwitches: 1,
-  },
-];
-
 interface ExamContextType {
   exams: Exam[];
   results: ExamResult[];
-  addExam: (exam: Omit<Exam, "id" | "createdAt">) => void;
-  submitResult: (result: Omit<ExamResult, "id">) => void;
+  createExam: (exam: Omit<Exam, "id" | "createdAt">) => Promise<string>;
+  submitResult: (result: Omit<ExamResult, "id">) => Promise<void>;
   getExamById: (id: string) => Exam | undefined;
   getResultsForExam: (examId: string) => ExamResult[];
   getResultsForStudent: (studentId: string) => ExamResult[];
   hasStudentAttempted: (examId: string, studentId: string) => boolean;
+  isLoading: boolean;
 }
 
 const ExamContext = createContext<ExamContextType | null>(null);
 
 export const ExamProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [exams, setExams] = useState<Exam[]>(INITIAL_EXAMS);
-  const [results, setResults] = useState<ExamResult[]>(INITIAL_RESULTS);
+  const [exams, setExams] = useState<Exam[]>([]);
+  const [results, setResults] = useState<ExamResult[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const addExam = useCallback((exam: Omit<Exam, "id" | "createdAt">) => {
-    setExams((prev) => [...prev, { ...exam, id: `e${Date.now()}`, createdAt: new Date().toISOString() }]);
+  // Listen to exams collection in real-time
+  useEffect(() => {
+    setIsLoading(true);
+    const examsRef = collection(db, "exams");
+    const examsQuery = query(examsRef, orderBy("createdAt", "desc"));
+
+    const unsubscribeExams = onSnapshot(
+      examsQuery,
+      (snapshot) => {
+        const examsData: Exam[] = [];
+        snapshot.forEach((doc) => {
+          examsData.push({
+            id: doc.id,
+            ...doc.data(),
+          } as Exam);
+        });
+        setExams(examsData);
+      },
+      (error) => {
+        console.error("Error loading exams:", error);
+        setIsLoading(false);
+      }
+    );
+
+    return () => unsubscribeExams();
   }, []);
 
-  const submitResult = useCallback((result: Omit<ExamResult, "id">) => {
-    setResults((prev) => [...prev, { ...result, id: `r${Date.now()}` }]);
+  // Listen to submissions collection in real-time
+  useEffect(() => {
+    const submissionsRef = collection(db, "submissions");
+    const submissionsQuery = query(submissionsRef, orderBy("submittedAt", "desc"));
+
+    const unsubscribeSubmissions = onSnapshot(
+      submissionsQuery,
+      (snapshot) => {
+        const submissionsData: ExamResult[] = [];
+        snapshot.forEach((doc) => {
+          submissionsData.push({
+            id: doc.id,
+            ...doc.data(),
+          } as ExamResult);
+        });
+        setResults(submissionsData);
+        setIsLoading(false);
+      },
+      (error) => {
+        console.error("Error loading submissions:", error);
+        setIsLoading(false);
+      }
+    );
+
+    return () => unsubscribeSubmissions();
   }, []);
+
+  const createExam = useCallback(
+    async (exam: Omit<Exam, "id" | "createdAt">): Promise<string> => {
+      try {
+        const examsRef = collection(db, "exams");
+        const docRef = await addDoc(examsRef, {
+          ...exam,
+          createdAt: new Date().toISOString(),
+        });
+        return docRef.id;
+      } catch (error) {
+        console.error("Error creating exam:", error);
+        throw error;
+      }
+    },
+    []
+  );
+
+  const submitResult = useCallback(
+    async (result: Omit<ExamResult, "id">): Promise<void> => {
+      try {
+        const submissionsRef = collection(db, "submissions");
+        await addDoc(submissionsRef, {
+          ...result,
+        });
+      } catch (error) {
+        console.error("Error submitting result:", error);
+        throw error;
+      }
+    },
+    []
+  );
 
   const getExamById = useCallback((id: string) => exams.find((e) => e.id === id), [exams]);
-  const getResultsForExam = useCallback((examId: string) => results.filter((r) => r.examId === examId), [results]);
-  const getResultsForStudent = useCallback((studentId: string) => results.filter((r) => r.studentId === studentId), [results]);
-  const hasStudentAttempted = useCallback((examId: string, studentId: string) =>
-    results.some((r) => r.examId === examId && r.studentId === studentId), [results]);
+
+  const getResultsForExam = useCallback(
+    (examId: string) => results.filter((r) => r.examId === examId),
+    [results]
+  );
+
+  const getResultsForStudent = useCallback(
+    (studentId: string) => results.filter((r) => r.studentId === studentId),
+    [results]
+  );
+
+  const hasStudentAttempted = useCallback(
+    (examId: string, studentId: string) =>
+      results.some((r) => r.examId === examId && r.studentId === studentId),
+    [results]
+  );
 
   return (
-    <ExamContext.Provider value={{ exams, results, addExam, submitResult, getExamById, getResultsForExam, getResultsForStudent, hasStudentAttempted }}>
+    <ExamContext.Provider
+      value={{
+        exams,
+        results,
+        createExam,
+        submitResult,
+        getExamById,
+        getResultsForExam,
+        getResultsForStudent,
+        hasStudentAttempted,
+        isLoading,
+      }}
+    >
       {children}
     </ExamContext.Provider>
   );

@@ -9,7 +9,7 @@ const Results = () => {
   const { user } = useAuth();
   const { exams, results } = useExams();
 
-  const myExams = exams.filter((e) => e.createdBy === user?.id);
+  const myExams = exams.filter((e) => e.teacherId === user?.id);
 
   // Export CSV
   const exportCSV = (examId: string) => {

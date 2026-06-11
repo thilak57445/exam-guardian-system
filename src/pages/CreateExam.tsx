@@ -8,13 +8,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Trash2, Save, GripVertical } from "lucide-react";
+import { Plus, Trash2, Save, GripVertical, Loader2 } from "lucide-react";
 
 const CreateExam = () => {
   const { user } = useAuth();
-  const { addExam } = useExams();
+  const { createExam } = useExams();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -55,15 +56,37 @@ const CreateExam = () => {
     setQuestions((prev) => prev.filter((_, i) => i !== idx));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (questions.length === 0) {
       toast({ title: "Error", description: "Add at least one question.", variant: "destructive" });
       return;
     }
-    addExam({ title, description, duration, startTime, endTime, questions, createdBy: user?.id || "" });
-    toast({ title: "Exam Created!", description: "Your exam is now available for students." });
-    navigate("/dashboard");
+    
+    setIsSubmitting(true);
+    try {
+      await createExam({
+        title,
+        description,
+        duration,
+        startTime,
+        endTime,
+        questions,
+        teacherId: user?.id || "",
+        teacherName: user?.name || "",
+      });
+      toast({ title: "Exam Created!", description: "Your exam is now available for students." });
+      navigate("/dashboard");
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to create exam. Please try again.",
+        variant: "destructive",
+      });
+      console.error("Error creating exam:", error);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -145,8 +168,9 @@ const CreateExam = () => {
             )}
           </div>
 
-          <Button type="submit" size="lg" className="w-full bg-accent text-accent-foreground hover:bg-accent/90 gap-2">
-            <Save className="h-4 w-4" /> Create Exam
+          <Button type="submit" size="lg" disabled={isSubmitting} className="w-full bg-accent text-accent-foreground hover:bg-accent/90 gap-2">
+            {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+            {isSubmitting ? "Creating..." : "Create Exam"}
           </Button>
         </form>
       </div>
