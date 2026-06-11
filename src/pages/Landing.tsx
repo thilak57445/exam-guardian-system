@@ -59,21 +59,6 @@ const Landing = () => {
               </Button>
             </div>
 
-            {/* Demo credentials */}
-            <div className="mt-8 p-4 rounded-xl border border-primary-foreground/10 bg-primary-foreground/5 max-w-md">
-              <p className="text-xs font-semibold text-accent mb-2">DEMO CREDENTIALS</p>
-              <div className="grid grid-cols-2 gap-3 text-sm text-primary-foreground/70">
-                <div>
-                  <p className="font-medium text-primary-foreground/90">Teacher</p>
-                  <p>teacher@exam.com</p>
-                </div>
-                <div>
-                  <p className="font-medium text-primary-foreground/90">Student</p>
-                  <p>student@exam.com</p>
-                </div>
-                <p className="col-span-2 text-xs">Password: password</p>
-              </div>
-            </div>
           </motion.div>
         </div>
       </section>

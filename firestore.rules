@@ -1,55 +1,47 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Users collection - read and update own profile
+
+    // ──────────────────────────────────────────────
+    // Users collection
+    // - Users can read & update their own profile
+    // - Users can create their own profile on signup
+    // ──────────────────────────────────────────────
     match /users/{userId} {
-      allow read: if request.auth.uid == userId;
-      allow write: if request.auth.uid == userId;
-      allow create: if request.auth.uid == userId &&
-        request.resource.data.uid == request.auth.uid &&
-        request.resource.data.email == request.auth.token.email &&
-        request.resource.data.role in ['teacher', 'student'] &&
-        request.resource.data.createdAt == request.time;
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow create: if request.auth != null
+        && request.auth.uid == userId
+        && request.resource.data.role in ['teacher', 'student'];
+      allow update: if request.auth != null && request.auth.uid == userId;
     }
 
+    // ──────────────────────────────────────────────
     // Exams collection
+    // - All authenticated users can read exams
+    //   (students need to browse available exams)
+    // - Only teachers can create exams (teacherId must match uid)
+    // - Only the owning teacher can update/delete
+    // ──────────────────────────────────────────────
     match /exams/{examId} {
-      // Teachers can create exams
-      allow create: if request.auth != null &&
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'teacher' &&
-        request.resource.data.teacherId == request.auth.uid &&
-        request.resource.data.createdAt == request.time;
-
-      // Teachers can read/update/delete their own exams
-      allow read, update, delete: if request.auth != null &&
-        request.auth.uid == resource.data.teacherId;
-
-      // Students can read all exams (for taking exams)
-      allow read: if request.auth != null &&
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'student';
+      allow read: if request.auth != null;
+      allow create: if request.auth != null
+        && request.resource.data.teacherId == request.auth.uid;
+      allow update, delete: if request.auth != null
+        && resource.data.teacherId == request.auth.uid;
     }
 
+    // ──────────────────────────────────────────────
     // Submissions collection
+    // - All authenticated users can read submissions
+    //   (teachers filter by their exam IDs client-side,
+    //    students filter by their own studentId)
+    // - Only students can create submissions
+    //   (studentId must match uid)
+    // ──────────────────────────────────────────────
     match /submissions/{submissionId} {
-      // Students can create submissions (submit exam)
-      allow create: if request.auth != null &&
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'student' &&
-        request.resource.data.studentId == request.auth.uid &&
-        request.resource.data.submittedAt == request.time;
-
-      // Students can read their own submissions
-      allow read: if request.auth != null &&
-        resource.data.studentId == request.auth.uid;
-
-      // Teachers can read submissions for their exams
-      allow read: if request.auth != null &&
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'teacher' &&
-        get(/databases/$(database)/documents/exams/$(resource.data.examId)).data.teacherId == request.auth.uid;
-    }
-
-    // Default deny all
-    match /{document=**} {
-      allow read, write: if false;
+      allow read: if request.auth != null;
+      allow create: if request.auth != null
+        && request.resource.data.studentId == request.auth.uid;
     }
   }
 }

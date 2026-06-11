@@ -4,12 +4,8 @@ import {
   collection,
   addDoc,
   query,
-  where,
   orderBy,
   onSnapshot,
-  getDoc,
-  doc,
-  QueryConstraint,
 } from "firebase/firestore";
 
 export interface MCQOption {
