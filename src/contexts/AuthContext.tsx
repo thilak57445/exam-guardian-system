@@ -48,20 +48,23 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
           if (userDocSnap.exists()) {
             const userData = userDocSnap.data();
-            setUser({
-              id: firebaseUser.uid,
-              email: firebaseUser.email || "",
-              name: userData.name || "",
-              role: userData.role || "student",
-            });
+            const role = userData.role;
+            if (role === "teacher" || role === "student") {
+              setUser({
+                id: firebaseUser.uid,
+                email: firebaseUser.email || "",
+                name: userData.name || "",
+                role: role as UserRole,
+              });
+            } else {
+              console.error("No valid role found in user document:", firebaseUser.uid);
+              setUser(null);
+              setError("No valid role found for this user.");
+            }
           } else {
-            // Fallback if user doc doesn't exist
-            setUser({
-              id: firebaseUser.uid,
-              email: firebaseUser.email || "",
-              name: firebaseUser.displayName || "",
-              role: "student",
-            });
+            console.error("User document does not exist in Firestore for UID:", firebaseUser.uid);
+            setUser(null);
+            setError("User profile not found in Firestore.");
           }
         } else {
           // User is logged out
@@ -88,15 +91,26 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const userDocRef = doc(db, "users", userCredential.user.uid);
       const userDocSnap = await getDoc(userDocRef);
 
-      if (userDocSnap.exists()) {
-        const userData = userDocSnap.data();
-        setUser({
-          id: userCredential.user.uid,
-          email: userCredential.user.email || "",
-          name: userData.name || "",
-          role: userData.role || "student",
-        });
+      if (!userDocSnap.exists()) {
+        throw new Error("User document does not exist in Firestore.");
       }
+
+      const userData = userDocSnap.data();
+      const role = userData.role;
+      if (role !== "teacher" && role !== "student") {
+        throw new Error("Invalid user role or role is missing in Firestore document.");
+      }
+
+      setUser({
+        id: userCredential.user.uid,
+        email: userCredential.user.email || "",
+        name: userData.name || "",
+        role: role as UserRole,
+      });
+
+      console.log("User UID:", userCredential.user.uid);
+      console.log("Firestore role:", role);
+      console.log("Redirect target:", role === "teacher" ? "Teacher Dashboard" : "Student Dashboard");
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Login failed";
       setError(errorMessage);
@@ -116,9 +130,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       // Store user profile in Firestore
       const userDocRef = doc(db, "users", userCredential.user.uid);
       await setDoc(userDocRef, {
-        name,
+        uid: userCredential.user.uid,
         email,
         role,
+        name,
         createdAt: new Date().toISOString(),
       });
 
